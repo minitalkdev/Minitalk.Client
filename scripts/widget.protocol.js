@@ -176,7 +176,10 @@ Minitalk.protocol = {
 	 * @param object[] data 로그데이터
 	 */
 	logs:function(data) {
+		var known = Minitalk.logs().ids;
+		var fresh = 0;
 		for (var i=0, loop=data.length;i<loop;i++) {
+			if (known[data[i].id] === undefined) fresh++;
 			Minitalk.logs(data[i]);
 		}
 		
@@ -190,7 +193,10 @@ Minitalk.protocol = {
 			}
 		}
 		
-		if (logs.length > 0) {
+		/**
+		 * 서버에서 새로 받은 기록이 있을 때만 구분선을 출력한다. (재접속시 매번 출력되지 않도록)
+		 */
+		if (fresh > 0 && logs.length > 0) {
 			var $main = $("main",$("div[data-role=frame]"));
 			$("div[data-role=line]",$("section[data-section=chat]",$main)).remove();
 			$("section[data-section=chat]",$main).append($("<div>").attr("data-role","line").append($("<div>").html("NEW MESSAGES")));
