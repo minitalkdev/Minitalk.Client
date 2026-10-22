@@ -10,7 +10,7 @@
 
 ## 설치
 
-[공식 다운로드](https://www.minitalk.io/ko/download) 또는 [v8.2.0 릴리스](https://github.com/minitalkdev/Minitalk.Client/releases/tag/v8.2.0)의 `Minitalk.v8.2.0.zip`을 사용하세요. 설치 ZIP에는 기본 템플릿이 포함되며, 채팅 서버 프로그램은 포함되지 않습니다. GitHub 저장소의 v8 브랜치와 소스 ZIP에도 기본 템플릿이 포함되므로 바로 새 설치할 수 있습니다.
+새 설치는 [공식 다운로드](https://www.minitalk.io/ko/download)를 이용하세요. 홈페이지에서 클라이언트에 기본 템플릿과 선택한 구성요소를 합쳐 설치 ZIP을 생성합니다. GitHub 저장소와 릴리스의 클라이언트 ZIP에는 기본 템플릿 및 채팅 서버 프로그램이 포함되지 않습니다.
 
 웹 호스팅의 PHP를 8.2~8.5로 설정하고 MySQL/MariaDB, mysqli, cURL, OpenSSL 등 설치 화면의 요구 조건을 확인하세요. attachments와 configs 디렉터리에 쓰기 권한을 설정한 뒤 install/에서 설치합니다.
 

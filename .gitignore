@@ -15,5 +15,3 @@ Minitalk.preset.php
 /server/configs.js
 /server/logs/
 /server/cert/
-!/templets/default/
-!/templets/default/**
