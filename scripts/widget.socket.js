@@ -15,6 +15,7 @@ Minitalk.socket = {
 	reconnectTimer:null,
 	connected:false,
 	joined:false,
+	lastConnectedRoom:null,
 	reconnectable:true,
 	pendingMessages:[],
 	channel:null,
@@ -77,6 +78,7 @@ Minitalk.socket = {
 	 */
 	disconnect:function() {
 		Minitalk.socket.reconnectable = false;
+		Minitalk.socket.lastConnectedRoom = null;
 		++Minitalk.socket.connectionAttempt;
 		clearTimeout(Minitalk.socket.reconnectTimer);
 		clearTimeout(Minitalk.ui.uploadReconnectTimer);
