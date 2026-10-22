@@ -28,6 +28,10 @@ $MINITALK = new Minitalk();
  * 요청작업을 수행할 요청작업코드
  */
 $action = Request('action');
+if (!is_string($action) || !preg_match('/^@?[A-Za-z][A-Za-z0-9]*$/D',$action)) {
+	header('Content-Type: application/json; charset=utf-8');
+	exit(json_encode(array('success'=>false,'message'=>'INVALID_ACTION')));
+}
 
 /**
  * 세션이 필요없는 액션인 경우 세션잠금을 해제한다.

@@ -12,7 +12,7 @@ Minitalk.protocol = {
 	 * 채팅서버에 연결이 완료되었을 때, 접속코드와 유저객체를 서버로 전송한다.
 	 */
 	connect:function() {
-		setTimeout(Minitalk.socket.sendConnection,1000);
+		Minitalk.socket.sendConnection();
 	},
 	/**
 	 * 채팅서버로 부터 접속승인을 받았을 경우, 접속된 유저의 정보를 수신한다.
@@ -39,7 +39,7 @@ Minitalk.protocol = {
 		Minitalk.socket.permission = data.permission;
 		Minitalk.socket.token = data.token;
 		Minitalk.socket.uuid = data.uuid;
-		
+
 		/**
 		 * 나의정보를 저장한다.
 		 */
@@ -101,6 +101,7 @@ Minitalk.protocol = {
 			Minitalk.socket.send("logs",{count:Minitalk.logCount,time:Minitalk.logs().latest});
 		} else {
 			Minitalk.socket.joined = true;
+			Minitalk.socket.flushPendingMessages();
 			
 			/**
 			 * 출력되지 못한 시스템 메시지를 출력한다.
@@ -153,9 +154,16 @@ Minitalk.protocol = {
 		 * 재접속이 가능한 경우 서버접속이 종료되었음을 알려준다.
 		 */
 		if (Minitalk.socket.reconnectable === true) {
-			Minitalk.ui.notify("disconnect","error",Minitalk.getErrorText("DISCONNECTED"),false,false);
-			if (Minitalk.autoReconnect == true) {
-				Minitalk.socket.reconnect(Minitalk.autoReconnectDelay);
+			if (document.hidden === true) {
+				/**
+				 * 파일피커, 탭전환 등으로 페이지가 hidden 상태일 때 끊긴 경우
+				 * 메시지를 표시하지 않고 visibilitychange 에서 재접속을 처리한다.
+				 */
+			} else {
+				Minitalk.ui.notify("disconnect","error",Minitalk.getErrorText("DISCONNECTED"),false,false);
+				if (Minitalk.autoReconnect == true) {
+					Minitalk.socket.reconnect(Minitalk.autoReconnectDelay);
+				}
 			}
 		}
 	},
@@ -187,6 +195,7 @@ Minitalk.protocol = {
 		Minitalk.ui.autoScroll(true);
 		
 		Minitalk.socket.joined = true;
+			Minitalk.socket.flushPendingMessages();
 		
 		/**
 		 * 출력되지 못한 시스템 메시지를 출력한다.

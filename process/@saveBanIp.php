@@ -12,10 +12,22 @@ if (defined('__MINITALK__') == false) exit;
 
 $errors = array();
 $oIp = Request('oIp');
-$ip = Request('ip') ? Request('ip') : $errors['ip'] = $this->getErrorText('REQUIRED');
+$ip = Request('ip');
+if (!is_string($ip) || $ip === '') $errors['ip'] = $this->getErrorText('REQUIRED');
+elseif (!filter_var($ip,FILTER_VALIDATE_IP)) $errors['ip'] = 'INVALID_IP';
+if (count($errors) === 0 && !$this->canStoreClientIp('banip',$ip)) {
+	$results->success=false;
+	$results->code='DATABASE_UPDATE_REQUIRED';
+	return;
+}
 $nickname = Request('nickname') ? Request('nickname') : '';
 $memo = Request('memo') ? Request('memo') : '';
 
+if (count($errors) > 0) {
+	$results->success = false;
+	$results->errors = $errors;
+	return;
+}
 $check = $this->db()->select($this->table->banip)->where('ip',$ip);
 if ($oIp) $check->where('ip',$oIp,'!=');
 if ($check->has() == true) {

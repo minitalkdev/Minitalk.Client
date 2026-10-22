@@ -1,9 +1,10 @@
 {
 	"id":"com.moimz.minitalk.client",
 	"title":"Minitalk",
-	"version":"7.5.3",
+	"version":"8.2.0",
+	"database_schema_version":1,
 	"dependencies":{
-		"php":"5.5.0",
+		"php":"8.2.0",
 		"mysql":"5.0.0",
 		"curl":"*",
 		"encrypt":"*",
@@ -120,7 +121,7 @@
 				},
 				"ip":{
 					"type":"varchar",
-					"length":15,
+					"length":45,
 					"comment":"업로드아이피"
 				},
 				"download":{
@@ -351,7 +352,7 @@
 			"columns":{
 				"ip":{
 					"type":"varchar",
-					"length":15,
+					"length":45,
 					"comment":"차단아이피"
 				},
 				"nickname":{
@@ -433,7 +434,7 @@
 				},
 				"ip":{
 					"type":"varchar",
-					"length":15,
+					"length":45,
 					"comment":"아이피"
 				},
 				"edited":{

@@ -11,7 +11,28 @@
 if (defined('__MINITALK__') == false) exit;
 
 $code = Request('code');
-$drafts = Request('drafts') ? json_decode(Request('drafts')) : null;
+$rawDrafts = Request('drafts');
+$drafts = is_string($rawDrafts) ? json_decode($rawDrafts) : null;
+$invalidUpload = !is_null($code) && !is_string($code);
+if ($code === null || $code === '') {
+	$invalidUpload = !is_array($drafts) || count($drafts) === 0;
+	if (!$invalidUpload) {
+		foreach ($drafts as $draft) {
+			if (!is_object($draft) || !isset($draft->name,$draft->size) || !is_string($draft->name) || $draft->name === '' || !is_int($draft->size) || $draft->size <= 0) {
+				$invalidUpload = true;
+				break;
+			}
+		}
+	}
+	$rawUser = Request('user');
+	$uploadUser = is_string($rawUser) ? json_decode($rawUser) : null;
+	if (!is_object($uploadUser) || !isset($uploadUser->nickname) || !is_string($uploadUser->nickname)) $invalidUpload = true;
+}
+if ($invalidUpload) {
+	$results->success = false;
+	$results->message = $this->getErrorText('INVALID_FILE_SIZE');
+	return;
+}
 
 if ($code != null) {
 	$hash = Decoder($code);
@@ -71,7 +92,11 @@ if ($code != null) {
 				}
 				
 				$filePath = date('Ym',$file->reg_date).'/'.$fileHash.'.'.base_convert(microtime(true)*10000,10,32).'.'.$this->getFileExtension($file->name,$this->getAttachmentPath().'/'.$file->path);
-				rename($this->getAttachmentPath().'/'.$file->path,$this->getAttachmentPath().'/'.$filePath);
+				if (rename($this->getAttachmentPath().'/'.$file->path,$this->getAttachmentPath().'/'.$filePath) === false) {
+					$results->success = false;
+					$results->message = $this->getErrorText('UPLOAD_FAILED');
+					return;
+				}
 				chmod($this->getAttachmentPath().'/'.$filePath,0707);
 				
 				$insert = array();
@@ -94,13 +119,13 @@ if ($code != null) {
 				$file->extension = $this->getFileExtension($file->name);
 				
 				if ($file->type == 'image') {
-					$file->view = $this->getClientProcessUrl('attachment',true).'/view/'.$hash.'/'.$file->name;
+					$file->view = $this->getClientProcessUrl('attachment',true).'/view/'.$hash.'/'.rawurlencode($file->name);
 				} else {
 					unset($file->width);
 					unset($file->height);
 				}
-				
-				$file->download = $this->getClientProcessUrl('attachment',true).'/download/'.$hash.'/'.$file->name;
+
+				$file->download = $this->getClientProcessUrl('attachment',true).'/download/'.$hash.'/'.rawurlencode($file->name);
 				$results->file = $file;
 			}
 		} else {
@@ -121,6 +146,13 @@ if ($code != null) {
 	}
 	
 	$user = json_decode(Request('user'));
+	$clientIp = GetClientIp();
+	if (!$this->canStoreClientIp('attachment',$clientIp)) {
+		$results->success = false;
+		$results->code = 'DATABASE_UPDATE_REQUIRED';
+		$results->message = '관리자에서 데이터베이스 업데이트를 완료해 주세요.';
+		return;
+	}
 	for ($i=0, $loop=count($drafts);$i<$loop;$i++) {
 		if ($channel->file_maxsize > 0 && $channel->file_maxsize * 1024 * 1024 < $drafts[$i]->size) {
 			$results->success = false;
@@ -151,7 +183,7 @@ if ($code != null) {
 					'type'=>'',
 					'mime'=>'',
 					'nickname'=>$user->nickname,
-					'ip'=>GetClientIp(),
+					'ip'=>$clientIp,
 					'reg_date'=>time(),
 					'exp_date'=>($channel->file_lifetime > 0 ? time() + $channel->file_lifetime * 60 * 60 * 24 : 0)
 				);

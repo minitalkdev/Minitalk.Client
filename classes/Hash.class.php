@@ -59,7 +59,7 @@ class Hash {
 
 	function pbkdf2_default($algo,$password,$salt,$count,$key_length) {
 		if ($count <= 0 || $key_length <= 0) {
-			trigger_error('PBKDF2 ERROR: Invalid parameters.',E_USER_ERROR);
+			throw new InvalidArgumentException('PBKDF2 ERROR: Invalid parameters.');
 		}
 		
 		if (!$algo) return $this->pbkdf2_fallback($password,$salt,$count,$key_length);
@@ -69,7 +69,7 @@ class Hash {
 			if ($algo === 'sha1') {
 				return $this->pbkdf2_fallback($password,$salt,$count,$key_length);
 			} else {
-				trigger_error('PBKDF2 ERROR: Hash algorithm not supported.',E_USER_ERROR);
+				throw new RuntimeException('PBKDF2 ERROR: Hash algorithm not supported.');
 			}
 		}
 		

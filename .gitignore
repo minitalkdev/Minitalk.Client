@@ -12,4 +12,8 @@
 /templets/*
 !/templets/index.php
 Minitalk.preset.php
-/server
+/server/configs.js
+/server/logs/
+/server/cert/
+!/templets/default/
+!/templets/default/**

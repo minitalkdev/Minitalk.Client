@@ -1,6 +1,33 @@
-Minitalk.Client
-================
+# Minitalk Client 8.2.0
 
-Realtime Chatting Platform, Minitalk Client
+미니톡 클라이언트의 PHP 8.2~8.5 대응 버전입니다.
 
-https://www.minitalk.io
+- PHP 8.2, 8.3, 8.4, 8.5에서 문법 및 MySQL 연결 동작을 검사했습니다.
+- 기존 v7 채팅서버와 연결할 수 있도록 Socket.IO 클라이언트 2.5.0을 사용합니다. Socket.IO 4 서버는 `allowEIO3: true` 설정이 필요합니다.
+- 파일 선택 중 연결이 끊겼을 때 재연결 후 첨부파일 전송을 이어갑니다.
+- DB 변경은 관리자 로그인 후 업데이트 버튼을 눌렀을 때만 실행합니다.
+- IPv6 저장 공간과 신뢰 프록시 IP 판정을 지원합니다.
+
+## 설치
+
+[공식 다운로드](https://www.minitalk.io/ko/download) 또는 [v8.2.0 릴리스](https://github.com/minitalkdev/Minitalk.Client/releases/tag/v8.2.0)의 `Minitalk.v8.2.0.zip`을 사용하세요. 설치 ZIP에는 기본 템플릿이 포함되며, 채팅 서버 프로그램은 포함되지 않습니다. GitHub 저장소의 v8 브랜치와 소스 ZIP에도 기본 템플릿이 포함되므로 바로 새 설치할 수 있습니다.
+
+웹 호스팅의 PHP를 8.2~8.5로 설정하고 MySQL/MariaDB, mysqli, cURL, OpenSSL 등 설치 화면의 요구 조건을 확인하세요. attachments와 configs 디렉터리에 쓰기 권한을 설정한 뒤 install/에서 설치합니다.
+
+## 기존 설치본 업데이트
+
+1. 파일과 DB를 백업합니다. PHP 7.4 사용자는 먼저 호스팅 PHP를 업그레이드하세요. PHP 8.2 미만에서는 실행되지 않습니다.
+2. 새 클라이언트 파일을 업로드합니다. 기존 attachments의 사용자 파일, configs의 키·DB 설정, Minitalk.preset.php, 사용자 플러그인·템플릿은 보존하세요.
+3. 관리자 페이지에 로그인해 DB 업데이트 안내를 확인하고 업데이트를 누릅니다.
+4. 로그인·채팅·첨부파일을 확인합니다.
+
+DB 업데이트는 안전한 추가·확장 작업만 자동 실행합니다. 일부 변경 후 오류가 나면 완료된 변경은 남고 다음 시도에서 이어집니다. 위험한 형식 변환이나 지원하지 않는 DB 구조는 수동 검토를 안내합니다.
+
+## 프록시
+
+기본값은 X-Forwarded-For를 신뢰하지 않습니다. ALB나 CloudFront 등 프록시 뒤에서 쓰는 경우 실제 프록시 IP/CIDR을 설정하세요. 위젯만 사용하는 페이지를 포함한 설정 예시는 [프록시 설정 문서](docs/PROXY-CONFIG.md)를 참고하세요.
+
+PHP 8.6 이상은 실행을 강제로 차단하지 않지만 아직 검증된 지원 범위는 아닙니다.
+
+공식 홈페이지: https://www.minitalk.io
+배포 소스에는 설치 완료 상태, DB 접속정보, 설치 키, 관리자 계정, 첨부파일, 캐시가 포함되지 않습니다. 설치 시 호스팅 환경에서 새로 생성됩니다.

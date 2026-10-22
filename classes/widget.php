@@ -108,8 +108,10 @@ function MinitalkDecoder($value,$key=null,$mode='base64') {
  *
  * @return string $ip
  */
+REQUIRE_ONCE __DIR__.'/clientip.php';
 function GetClientIp() {
-	return isset($_SERVER['HTTP_X_FORWARDED_FOR']) == true ? $_SERVER['HTTP_X_FORWARDED_FOR'] : $_SERVER['REMOTE_ADDR'];
+	global $_MINITALK, $_CONFIGS;
+	return MinitalkResolveClientIp($_MINITALK->trustedProxies ?? ($_CONFIGS->trustedProxies ?? array()));
 }
 
 /**

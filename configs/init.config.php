@@ -1,4 +1,11 @@
 <?php
+// Check before loading application classes, configuration, sessions or database code.
+if (PHP_VERSION_ID < 80200) {
+    http_response_code(503);
+    header('Content-Type: text/plain; charset=UTF-8');
+    exit('Minitalk requires PHP 8.2–8.5. 호스팅의 PHP 버전을 8.2~8.5로 변경한 뒤 다시 접속해 주세요.');
+}
+
 /**
  * 이 파일은 미니톡 클라이언트의 일부입니다. (https://www.minitalk.io)
  *
@@ -16,14 +23,14 @@
  * __MINITALK__ : 미니톡 클라이언트에 의해 PHP 파일이 실행되었는지 여부를 확인하는 상수
  * __MINITALK_VERSION__ : 미니톡 클라이언트 버전을 정의하는 상수. 빌드날짜는 포함되지 않음
  * __MINITALK_DB_PREFIX__ : 미니톡 클라이언트에서 생성되는 모든 DB 테이블앞에 붙는 PREFIX를 정의하는 상수
- * __MINITALK_PATH__ : $_SERVER['DOCUMENT_ROOT'] 를 미니톡 클라이언트가 설치되어 있는 서버상의 경로
- * __MINITALK_DIR__ : $_SERVER['DOCUMENT_ROOT'] 을 포함하지 않는 미니톡 클라이언트가 설치되어 있는 웹브라우저상의 경로
+ * __MINITALK_PATH__ : 클라이언트의 절대 설치 경로 를 미니톡 클라이언트가 설치되어 있는 서버상의 경로
+ * __MINITALK_DIR__ : DOCUMENT_ROOT 을 포함하지 않는 미니톡 클라이언트가 설치되어 있는 웹브라우저상의 경로
  */
 define('__MINITALK__',true);
-define('__MINITALK_VERSION__','7.5.3');
+define('__MINITALK_VERSION__','8.2.0');
 define('__MINITALK_DB_PREFIX__','minitalk_');
 if (defined('__MINITALK_PATH__') == false) define('__MINITALK_PATH__',str_replace('/configs','',str_replace(DIRECTORY_SEPARATOR,'/',__DIR__)));
-if (defined('__MINITALK_DIR__') == false) define('__MINITALK_DIR__',str_replace(str_replace(DIRECTORY_SEPARATOR,'/',$_SERVER['DOCUMENT_ROOT']),'',__MINITALK_PATH__));
+if (defined('__MINITALK_DIR__') == false) define('__MINITALK_DIR__',str_replace(str_replace(DIRECTORY_SEPARATOR,'/',($_SERVER['DOCUMENT_ROOT'] ?? __MINITALK_PATH__)),'',__MINITALK_PATH__));
 
 /**
  * 미니톡 클라이언트에서 공통적으로 사용하는 기본 함수셋을 불러온다.
@@ -76,7 +83,7 @@ foreach ($_GET as $key=>$value) {
  * 미니톡 클라이언트가 정상설치되어 별도의 세션폴더가 생성되어있다면, 해당 폴더에 세션을 저장한다.
  */
 if (isset($_CONFIGS->session_path) == true && is_dir($_CONFIGS->session_path) == true && is_writable($_CONFIGS->session_path) == true) {
-	session_save_path($session_path);
+	session_save_path($_CONFIGS->session_path);
 }
 $session_name = session_name('MINITALK_SESSID');
 if (isset($_CONFIGS->sessionDomain) == true) {
@@ -98,7 +105,7 @@ if (defined('__DEBUG_MODE__') == true) {
 	error_reporting(E_ALL);
 	ini_set('display_errors',true);
 } else {
-	error_reporting(0);
+	error_reporting(E_ALL);
 	ini_set('display_errors',false);
 }
 

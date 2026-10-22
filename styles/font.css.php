@@ -14,9 +14,9 @@ header('Expires: '.gmdate('D, d M Y H:i:s',time() + 3600).' GMT');
 header('Cache-Control: max-age=3600');
 header('Pragma: public');
 
-$language = isset($_GET['language']) == true ? $_GET['language'] : 'ko';
-$font = isset($_GET['font']) == true ? explode(',',$_GET['font']) : array();
-$default = isset($_GET['default']) == true ? $_GET['default'] : null;
+$language = isset($_GET['language']) == true && is_string($_GET['language']) == true ? $_GET['language'] : 'ko';
+$font = isset($_GET['font']) == true && is_string($_GET['font']) == true ? explode(',',$_GET['font']) : array();
+$default = isset($_GET['default']) == true && is_string($_GET['default']) == true ? $_GET['default'] : null;
 
 $css = '';
 for ($i=0, $loop=count($font);$i<$loop;$i++) {

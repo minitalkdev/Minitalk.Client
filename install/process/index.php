@@ -22,6 +22,19 @@ if (function_exists('apache_setenv') == true) {
 
 $action = Request('action');
 $results = new stdClass();
+// An existing customer's database must only change through the approved admin update.
+if ($action === 'install' && $_CONFIGS->installed === true) {
+	try {
+		$installed = new Minitalk();
+		if ($installed->db()->exists('admin_table') && $installed->db()->select('admin_table')->count() > 0) {
+			http_response_code(403);
+			exit(json_encode(array('success'=>false,'code'=>'USE_ADMIN_DATABASE_UPDATE')));
+		}
+	} catch (Throwable $error) {
+		http_response_code(403);
+		exit(json_encode(array('success'=>false,'code'=>'INSTALLATION_STATE_UNVERIFIED')));
+	}
+}
 if ($action == 'dependency') {
 	$dependency = Request('dependency');
 	$version = Request('version');
@@ -113,7 +126,7 @@ if ($action == 'install') {
 	$admin_password = Request('admin_password') ? Request('admin_password') : $errors['admin_password'] = 'admin_password';
 	$admin_nickname = Request('admin_nickname') ? Request('admin_nickname') : $errors['admin_nickname'] = 'admin_nickname';
 	
-	if ($_CONFIGS->presets->key == true) {
+	if ($_CONFIGS->presets->db == true) {
 		$db = $_CONFIGS->db;
 	} elseif (is_file(__MINITALK_PATH__.'/configs/db.config.php') == true) {
 		$dbFile = explode(PHP_EOL,file_get_contents(__MINITALK_PATH__.'/configs/db.config.php'));
@@ -122,7 +135,9 @@ if ($action == 'install') {
 		$db = new stdClass();
 		$db->type = 'mysql';
 		$db->host = Request('db_host');
-		$db->port = Request('db_port');
+		$port = Request('db_port');
+		$db->port = $port === null || $port === '' ? 3306 : filter_var($port,FILTER_VALIDATE_INT,array('options'=>array('min_range'=>1,'max_range'=>65535)));
+		if ($db->port === false) $errors['db_port'] = 'INVALID_PORT';
 		$db->username = Request('db_id');
 		$db->password = Request('db_password');
 		$db->database = Request('db_name');

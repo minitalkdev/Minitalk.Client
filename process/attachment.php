@@ -10,7 +10,7 @@
  */
 if (defined('__MINITALK__') == false) exit;
 
-$extras = Request('extras') ? explode('/',Request('extras')) : array();
+$extras = is_string(Request('extras')) && Request('extras') !== '' ? explode('/',Request('extras')) : array();
 if (count($extras) != 3) {
 	header("HTTP/1.1 404 Not Found");
 	exit;

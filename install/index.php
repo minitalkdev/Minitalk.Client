@@ -12,7 +12,7 @@ REQUIRE_ONCE str_replace('/install','',str_replace(DIRECTORY_SEPARATOR,'/',__DIR
 
 $package = json_decode(file_get_contents(__MINITALK_PATH__.'/package.json'));
 $language = Request('language') ? Request('language') : 'en';
-$acceptLanguage = substr($_SERVER['HTTP_ACCEPT_LANGUAGE'],0,2);
+$acceptLanguage = substr((($_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? 'en') ?? 'en'),0,2);
 ?>
 <!DOCTYPE HTML>
 <html lang="<?php echo $language; ?>" data-lang="<?php echo $acceptLanguage; ?>">

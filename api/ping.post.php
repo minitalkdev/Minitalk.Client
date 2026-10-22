@@ -13,7 +13,7 @@ if (defined('__MINITALK__') == false) exit;
 $domain = Request('domain');
 $time = Request('time');
 
-if (($secret_key == null && $client_secret == null) || strlen($domain) == 0) {
+if (($secret_key == null && $client_secret == null) || is_string($domain) == false || $domain === '') {
 	$data->success = false;
 	$data->message = 'MISSING PARAMTERS : SECRET_KEY OR CLIENT_SECRET OR DOMAIN';
 	return;
@@ -37,9 +37,11 @@ $this->db()->update($this->table->server,array('status'=>'ONLINE','user'=>$user,
 $this->db()->update($this->table->server,array('status'=>'ONLINE','user'=>$user,'channel'=>$channel))->where('domain',$domain)->where('type','SERVICE')->execute();
 $this->db()->update($this->table->channel,array('user'=>0))->where('server',$domain)->execute();
 
-$users = json_decode(Request('users')) ? json_decode(Request('users')) : array();
+$users = is_string(Request('users')) ? json_decode(Request('users')) : null;
+if (is_object($users) == false && is_array($users) == false) $users = array();
 foreach ($users as $room=>$user) {
-	$temp = explode('#',$room);
+	$temp = explode('#',(string)$room);
+	if (count($temp) < 2) continue;
 	$channel = $temp[1];
 	
 	$this->db()->update($this->table->channel,array('user'=>$user))->where('channel',$channel)->where('server',$domain)->execute();

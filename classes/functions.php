@@ -278,7 +278,7 @@ function GetPhoneNumber($phone,$code='82',$is_included_code=false) {
  * @return string[] $languages
  */
 function GetDefaultLanguages() {
-	$languages = explode(',',$_SERVER['HTTP_ACCEPT_LANGUAGE']);
+	$languages = explode(',',($_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? 'en'));
 	foreach ($languages as &$language) {
 		$language = substr($language,0,2);
 	}
@@ -294,6 +294,10 @@ function GetDefaultLanguages() {
  * @return string $str 변환된 문자열
  */
 function GetString($str,$code) {
+	if (is_array($str)) return array_map(function($value) use ($code) { return GetString($value,$code); },$str);
+	if ($str === null) return '';
+	if (!is_scalar($str)) return '';
+	$str = (string)$str;
 	switch ($code) {
 		/**
 		 * input 태그에 들어갈 수 있도록 <, >, " 문자열을 HTML 엔티티 문자열로 변환하고 ' 에 \ 를 추가한다.
@@ -501,8 +505,10 @@ function GetDateOfWeek($year,$week) {
  *
  * @return string $ip
  */
+REQUIRE_ONCE __DIR__.'/clientip.php';
 function GetClientIp() {
-	return isset($_SERVER['HTTP_X_FORWARDED_FOR']) == true ? $_SERVER['HTTP_X_FORWARDED_FOR'] : $_SERVER['REMOTE_ADDR'];
+	global $_CONFIGS;
+	return MinitalkResolveClientIp($_CONFIGS->trustedProxies ?? array());
 }
 
 /**
@@ -551,7 +557,7 @@ function SaveFileFromUrl($url,$filename,$filetype=null) {
 	$buffer = curl_exec($ch);
 	$info = curl_getinfo($ch);
 	$error = curl_error($ch);
-	curl_close($ch);
+	unset($ch);
 	
 	if ($info['http_code'] != 200 || ($filetype != null && preg_match('/'.$filetype.'/',$info['content_type']) == false)) {
 		return false;
@@ -706,7 +712,7 @@ function CheckDependency($dependency,$version) {
 		
 		$request = IsHttps() == true ? 'https://' : 'http://';
 		$request.= $_SERVER['HTTP_HOST'];
-		$request.= array_shift(explode('/install',$_SERVER['REQUEST_URI']));
+		$request.= explode('/install',$_SERVER['REQUEST_URI'])[0];
 		$request.= $version;
 		
 		$ch = curl_init();
@@ -716,7 +722,7 @@ function CheckDependency($dependency,$version) {
 		curl_setopt($ch,CURLOPT_USERAGENT,$_SERVER['HTTP_USER_AGENT']);
 		$data = curl_exec($ch);
 		$http_code = curl_getinfo($ch,CURLINFO_HTTP_CODE);
-		curl_close($ch);
+		unset($ch);
 		
 		if ($http_code == 200) {
 			$result = json_decode($data);
@@ -760,68 +766,18 @@ function CheckDirectoryPermission($dir,$permission) {
  * @return boolean $success
  */
 function CreateDatabase($dbConnect,$schema) {
-	$dbConnect->startTransaction();
-	
-	foreach ($schema as $table=>$structure) {
-		if ($dbConnect->exists($table) == false) {
-			if ($dbConnect->create($table,$structure) == false) {
-				$dbConnect->rollback();
-				return $table;
-			}
-		} elseif ($dbConnect->compare($table,$structure) == false) {
-			$rename = $table.'_BK'.date('YmdHis');
-			if ($dbConnect->rename($table,$rename) == false) {
-				$dbConnect->rollback();
-				return $table;
-			}
-			
-			if ($dbConnect->create($table,$structure) == false) {
-				$dbConnect->rollback();
-				$dbConnect->rename($rename,$table);
-				return $table;
-			}
-			
-			$data = $dbConnect->select($rename)->get();
-			for ($i=0, $loop=count($data);$i<$loop;$i++) {
-				$insert = array();
-				foreach ($structure->columns as $column=>$type) {
-					if (isset($data[$i]->$column) == true) {
-						if (isset($type->is_null) == false || $type->is_null == false || strlen($data[$i]->$column) > 0) {
-							$insert[$column] = $data[$i]->$column;
-						}
-					} else {
-						if (isset($type->default) == true) $insert[$column] = $type->default;
-						if (isset($type->value) == true) $insert[$column] = $type->value;
-						if (isset($type->origin) == true && isset($data[$i]->{$type->origin}) == true) $insert[$column] = $data[$i]->{$type->origin};
-					}
-				}
-				$dbConnect->insert($table,$insert)->execute();
-			}
-			
-			if ($dbConnect->getLastError()) {
-				$dbConnect->drop($table);
-				$dbConnect->rename($rename,$table);
-				return $table;
-			}
-		}
-		
-		if (isset($structure->datas) == true && is_array($structure->datas) == true && count($structure->datas) > 0 && $dbConnect->select($table)->count() == 0) {
-			for ($i=0, $loop=count($structure->datas);$i<$loop;$i++) {
-				$dbConnect->insert($table,(array)$structure->datas[$i])->execute();
-			}
-		}
-		
-		if ($dbConnect->getLastError()) {
-			$dbConnect->rollback();
-			return $table;
-		}
-	}
-	
-	$dbConnect->commit();
-	
-	return true;
+    // Initial installation is explicit. Existing admin page loads never call this helper.
+    try {
+        $package = json_decode(file_get_contents(__MINITALK_PATH__.'/package.json'));
+        $updater = new DatabaseUpdater($dbConnect,$schema,$package->database_schema_version ?? DatabaseUpdater::VERSION);
+        $status = $updater->status();
+        $result = $updater->apply($status['schema_hash']);
+        return $result['success'] ? true : $result['code'];
+    } catch (Throwable $error) {
+        error_log('Minitalk initial schema validation failed: '.get_class($error).' code '.$error->getCode());
+        return 'DATABASE_INITIALIZATION_FAILED';
+    }
 }
-
 /**
  * 디렉토리를 생성한다.
  *

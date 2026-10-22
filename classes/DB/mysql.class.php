@@ -9,6 +9,10 @@
  * @modified 2025. 2. 7.
  */
 class mysql {
+	private function sanitizeSchemaValue($value) {
+		return str_replace(array(chr(39), chr(34)), array('&#39;', '&#34;'), strip_tags(str_replace(chr(0), '', (string)$value)));
+	}
+
 	private $db;
 	private $version = null;
 	private $engine = null;
@@ -31,6 +35,7 @@ class mysql {
 	private $_stmtError;
 	private $_tableLockMethod = 'READ';
 	public $count = 0;
+	private $_transaction_in_progress = false;
 	
 	/**
 	 * 클래스를 초기화한다.
@@ -41,7 +46,7 @@ class mysql {
 	function __construct($db=null,$class=null) {
 		if ($db !== null) {
 			$this->db = $db;
-			if (isset($this->db->port) == false) $this->db->port = 3306;
+			$this->db->port = self::normalizePort($this->db->port ?? null);
 			if (isset($this->db->charset) == false) $this->db->charset = 'utf8mb4';
 		}
 		
@@ -58,6 +63,8 @@ class mysql {
 		if ($mysqli != null) {
 			$this->_mysqli = $mysqli;
 		} else {
+			// PHP 8.1+ 기본값(예외 모드) 대신, 이 클래스가 전제하는 false 반환 방식으로 에러를 처리한다.
+			mysqli_report(MYSQLI_REPORT_OFF);
 			ob_start();
 			$this->_mysqli = new mysqli($this->db->host,$this->db->username,$this->db->password,$this->db->database,$this->db->port);
 			ob_end_clean();
@@ -103,10 +110,22 @@ class mysql {
 	 * @param object $db 데이터베이스 접속정보
 	 * @return boolean $success 접속성공여부
 	 */
+	static function normalizePort($port) {
+		if ($port === null || $port === '') return 3306;
+		$value = filter_var($port,FILTER_VALIDATE_INT,array('options'=>array('min_range'=>1,'max_range'=>65535)));
+		if ($value === false) throw new InvalidArgumentException('INVALID_DATABASE_PORT');
+		return $value;
+	}
+
 	function check($db) {
-		if (isset($db->port) == false) $db->port = 3306;
-		$mysqli = @new mysqli($db->host,$db->username,$db->password,$db->database,$db->port);
+		try {
+			$db->port = self::normalizePort($db->port ?? null);
+			$mysqli = new mysqli($db->host,$db->username,$db->password,$db->database,$db->port);
+		} catch (Throwable $e) {
+			return false;
+		}
 		if ($mysqli->connect_errno) return false;
+		$mysqli->close();
 		return true;
 	}
 	
@@ -116,7 +135,12 @@ class mysql {
 	 * @return boolean $pong
 	 */
 	function ping() {
-		return $this->_mysqli->ping();
+		// mysqli::ping() is deprecated; reconnect explicitly after a lost connection.
+		try {
+			return $this->_mysqli->query('SELECT 1') !== false;
+		} catch (mysqli_sql_exception $e) {
+			return false;
+		}
 	}
 	
 	/**
@@ -174,7 +198,7 @@ class mysql {
 	 */
 	function rawQuery($query,$bindParams=null,$sanitize=true) {
 		$this->_query = $query;
-		if ($sanitize) $this->_query = filter_var($query,FILTER_SANITIZE_STRING,FILTER_FLAG_NO_ENCODE_QUOTES);
+		if ($sanitize) $this->_query = strip_tags(str_replace(chr(0), '', $query));
 		$stmt = $this->_prepareQuery();
 		if (is_array($bindParams) === true) {
 			$params = array('');
@@ -232,7 +256,7 @@ class mysql {
 	 * @param boolean $exists
 	 */
 	function exists($table,$included_prefix=false) {
-		$table = filter_var($table,FILTER_SANITIZE_STRING);
+		$table = $this->sanitizeSchemaValue($table);
 		$count = $this->rawQuery("SHOW TABLES LIKE '".($included_prefix == true ? '' : $this->_prefix).$table."'");
 		return count($count) == 1;
 	}
@@ -245,7 +269,7 @@ class mysql {
 	 * @return int $size
 	 */
 	function size($table,$included_prefix=false) {
-		$table = filter_var($table,FILTER_SANITIZE_STRING);
+		$table = $this->sanitizeSchemaValue($table);
 		$data = $this->rawQuery("SELECT `DATA_LENGTH`, `INDEX_LENGTH` FROM `information_schema`.`TABLES` WHERE `table_schema`='".$this->db->database."' and `table_name`='".($included_prefix == true ? '' : $this->_prefix).$table."'");
 		
 		if (count($data) > 0) {
@@ -297,7 +321,7 @@ class mysql {
 	 * @return boolean $is_coincidence
 	 */
 	function compare($table,$schema,$included_prefix=false) {
-		$table = filter_var($table,FILTER_SANITIZE_STRING);
+		$table = $this->sanitizeSchemaValue($table);
 		$desc = $this->rawQuery('SHOW FULL COLUMNS FROM `'.($included_prefix == true ? '' : $this->_prefix).$table.'`');
 		if (count($desc) != count(array_keys((array)$schema->columns))) return false;
 		
@@ -361,7 +385,7 @@ class mysql {
 		
 		foreach ($schema->indexes as $column=>$type) {
 			if (isset($index[$column]) == false) {
-				$column = filter_var($column,FILTER_SANITIZE_STRING);
+				$column = $this->sanitizeSchemaValue($column);
 				$column = '`'.str_replace(',','`,`',$column).'`';
 				if ($type == 'primary_key') {
 					$this->rawQuery('ALTER TABLE `'.($included_prefix == true ? '' : $this->_prefix).$table.'` ADD PRIMARY KEY('.$column.')');
@@ -400,14 +424,14 @@ class mysql {
 	 * @return boolean $success
 	 */
 	function create($table,$schema,$included_prefix=false) {
-		$table = filter_var($table,FILTER_SANITIZE_STRING);
+		$table = $this->sanitizeSchemaValue($table);
 		$query = 'CREATE TABLE IF NOT EXISTS `'.($included_prefix == true ? '' : $this->_prefix).$table.'` (';
 		
 		$isFirst = true;
 		foreach ($schema->columns as $column=>$options) {
 			if ($isFirst == false) $query.= ', ';
 			
-			$column = filter_var($column,FILTER_SANITIZE_STRING);
+			$column = $this->sanitizeSchemaValue($column);
 			$query.= '`'.$column.'` ';
 			if (isset($options->length) == true) {
 				$query.= $options->type.'('.$options->length.')';
@@ -437,7 +461,7 @@ class mysql {
 		if ($this->getLastError()) return false;
 		
 		foreach ($schema->indexes as $column=>$index) {
-			$column = filter_var($column,FILTER_SANITIZE_STRING);
+			$column = $this->sanitizeSchemaValue($column);
 			$column = '`'.str_replace(',','`,`',$column).'`';
 			
 			if ($index == 'primary_key') {
@@ -461,7 +485,7 @@ class mysql {
 		}
 		
 		if (isset($schema->auto_increment) == true && $schema->auto_increment) {
-			$auto_increment = filter_var($schema->auto_increment,FILTER_SANITIZE_STRING);
+			$auto_increment = $this->sanitizeSchemaValue($schema->auto_increment);
 			$query = 'ALTER TABLE `'.($included_prefix == true ? '' : $this->_prefix).$table.'` CHANGE `'.$auto_increment.'` `'.$auto_increment.'` int('.$schema->columns->{$schema->auto_increment}->length.') NOT NULL AUTO_INCREMENT';
 			if (isset($schema->columns->{$schema->auto_increment}->comment) == true) $query.= " COMMENT '".$schema->columns->{$schema->auto_increment}->comment."'";
 			$this->rawQuery($query);
@@ -479,7 +503,7 @@ class mysql {
 	 * @return boolean $success
 	 */
 	function drop($table,$included_prefix=false) {
-		$table = filter_var($table,FILTER_SANITIZE_STRING);
+		$table = $this->sanitizeSchemaValue($table);
 		$this->rawQuery('DROP TABLE `'.($included_prefix == true ? '' : $this->_prefix).$table.'`');
 		
 		return $this->getLastError() == '';
@@ -493,7 +517,7 @@ class mysql {
 	 * @return boolean $success
 	 */
 	function truncate($table,$included_prefix=false) {
-		$table = filter_var($table,FILTER_SANITIZE_STRING);
+		$table = $this->sanitizeSchemaValue($table);
 		$this->rawQuery('TRUNCATE TABLE `'.($included_prefix == true ? '' : $this->_prefix).$table.'`');
 		
 		return $this->getLastError() == '';
@@ -508,8 +532,8 @@ class mysql {
 	 * @return boolean $success
 	 */
 	function rename($table,$newname,$included_prefix=false) {
-		$table = filter_var($table,FILTER_SANITIZE_STRING);
-		$newname = filter_var($newname,FILTER_SANITIZE_STRING);
+		$table = $this->sanitizeSchemaValue($table);
+		$newname = $this->sanitizeSchemaValue($newname);
 		$this->rawQuery('RENAME TABLE `'.($included_prefix == true ? '' : $this->_prefix).$table.'` TO `'.($included_prefix == true ? '' : $this->_prefix).$newname.'`');
 		
 		return $this->getLastError() == '';
@@ -523,7 +547,7 @@ class mysql {
 	 * @return boolean $success
 	 */
 	function backup($table,$included_prefix=false) {
-		$table = filter_var($table,FILTER_SANITIZE_STRING);
+		$table = $this->sanitizeSchemaValue($table);
 		$backupname = $table.'_BK'.date('YmdHis');
 		$this->rawQuery('CREATE TABLE IF NOT EXISTS `'.($included_prefix == true ? '' : $this->_prefix).$backupname.'` SELECT * FROM `'.($included_prefix == true ? '' : $this->_prefix).$table.'`');
 		
@@ -544,7 +568,7 @@ class mysql {
 			$this->_error('Bad alter type: Can be either ADD or CHANGE or DROP');
 			return false;
 		}
-		$table = filter_var($table,FILTER_SANITIZE_STRING);
+		$table = $this->sanitizeSchemaValue($table);
 		$query = 'ALTER TABLE `'.($included_prefix == true ? '' : $this->_prefix).$table.'` '.$type.' ';
 		
 		if ($type == 'ADD' || $type == 'CHANGE') {
@@ -559,7 +583,7 @@ class mysql {
 					$this->_error('Bad column name');
 					return false;
 				}
-				$query.= '`'.filter_var($column->name,FILTER_SANITIZE_STRING).'`';
+				$query.= '`'.$this->sanitizeSchemaValue($column->name).'`';
 			}
 			
 			if ($type == 'CHANGE') {
@@ -568,7 +592,7 @@ class mysql {
 					return false;
 				}
 				$query.= ' `'.$target.'` ';
-				if (isset($column->name) == true) $query.= '`'.filter_var($column->name,FILTER_SANITIZE_STRING).'`';
+				if (isset($column->name) == true) $query.= '`'.$this->sanitizeSchemaValue($column->name).'`';
 				else $query.= $target;
 			}
 			
@@ -601,7 +625,7 @@ class mysql {
 				$this->_error('Bad column name');
 				return false;
 			}
-			$query.= '`'.filter_var($column,FILTER_SANITIZE_STRING).'`';
+			$query.= '`'.$this->sanitizeSchemaValue($column).'`';
 		}
 		
 		$this->rawQuery($query);
@@ -820,7 +844,7 @@ class mysql {
 		if ($joinType && in_array($joinType,$allowedTypes) == false)
 			die('Wrong JOIN type: '.$joinType);
 		if (is_object($joinTable) == false) {
-			$joinTable = $this->_prefix.filter_var($joinTable,FILTER_SANITIZE_STRING);
+			$joinTable = $this->_prefix.$this->sanitizeSchemaValue($joinTable);
 		}
 		$this->_join[] = array($joinType,$joinTable,$joinCondition);
 		return $this;
@@ -1520,9 +1544,8 @@ class mysql {
 	 * @param class $copy 복제된 쿼리빌더 클래스
 	 */
 	function copy() {
-		$copy = unserialize(serialize($this));
-		$copy->_mysqli = $this->_mysqli;
-		return $copy;
+		// 쿼리빌더 배열만 복사하고 mysqli 연결은 공유한다. (mysqli 객체는 직렬화할 수 없다.)
+		return clone $this;
 	}
 	
 	/**

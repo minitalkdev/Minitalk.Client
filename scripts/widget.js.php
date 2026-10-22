@@ -80,7 +80,7 @@ if ($MINITALK->getCacheTime($cacheFile) >= $MINITALK->getLastModified()) {
 	 * 플러그인을 불러온다.
 	 */
 	foreach (GetDirectoryItems(__MINITALK_PATH__.'/plugins','directory') as $plugin) {
-		$name = array_pop(explode('/',$plugin));
+		$name = basename($plugin);
 		$js->add('Minitalk.plugins.'.$name.' = function() {');
 		$js->add('
 			var me = this;

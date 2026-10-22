@@ -11,9 +11,12 @@ Minitalk.socket = {
 	io:null,
 	connection:null,
 	connecting:false,
+	connectionAttempt:0,
+	reconnectTimer:null,
 	connected:false,
 	joined:false,
 	reconnectable:true,
+	pendingMessages:[],
 	channel:null,
 	permission:null,
 	token:null,
@@ -27,16 +30,23 @@ Minitalk.socket = {
 		/**
 		 * 서버접속을 시도중이면 접속시도를 중단한다.
 		 */
-		if (Minitalk.socket.connecting == true && Minitalk.socket.connected == true) return;
+		if (Minitalk.socket.connecting === true || Minitalk.socket.connected === true) return;
+		Minitalk.socket.connecting = true;
+		var attempt = ++Minitalk.socket.connectionAttempt;
+		clearTimeout(Minitalk.socket.reconnectTimer);
 		
 		Minitalk.socket.reconnectable = true;
 		
 		$.send(Minitalk.getProcessUrl("getServer"),{channel:Minitalk.channel},function(result) {
+			if (attempt !== Minitalk.socket.connectionAttempt || Minitalk.socket.reconnectable !== true) return;
 			if (result.success == true) {
 				/**
 				 * 이벤트를 발생시킨다.
 				 */
-				if (Minitalk.fireEvent("beforeConnect",[result.connection]) === false) return;
+				if (Minitalk.fireEvent("beforeConnect",[result.connection]) === false) {
+					Minitalk.socket.connecting = false;
+					return;
+				}
 				
 				Minitalk.socket.channel = result.channel;
 				Minitalk.ui.initChannel();
@@ -49,9 +59,14 @@ Minitalk.socket = {
 				 * 프로토콜 이벤트를 등록한다.
 				 */
 				for (var command in Minitalk.protocol) {
-					Minitalk.socket.io.on(command,Minitalk.protocol[command]);
+					(function(command, socket) {
+					socket.on(command,function() {
+						if (Minitalk.socket.io === socket && attempt === Minitalk.socket.connectionAttempt) Minitalk.protocol[command].apply(this,arguments);
+					});
+				})(command,Minitalk.socket.io);
 				}
 			} else {
+				Minitalk.socket.connecting = false;
 				Minitalk.ui.printError(result.error);
 			}
 		});
@@ -62,7 +77,15 @@ Minitalk.socket = {
 	 */
 	disconnect:function() {
 		Minitalk.socket.reconnectable = false;
-		Minitalk.socket.io.disconnect();
+		++Minitalk.socket.connectionAttempt;
+		clearTimeout(Minitalk.socket.reconnectTimer);
+		clearTimeout(Minitalk.ui.uploadReconnectTimer);
+		Minitalk.ui.uploadReconnectTimer = null;
+		Minitalk.ui.uploadReconnectStarted = null;
+		Minitalk.socket.pendingMessages = [];
+		var socket = Minitalk.socket.io;
+		if (socket) socket.disconnect();
+		Minitalk.socket.disconnected();
 	},
 	/**
 	 * 미니톡 채팅서버에 재접속한다.
@@ -75,7 +98,8 @@ Minitalk.socket = {
 		 */
 		if (Minitalk.socket.reconnectable == false) return;
 		
-		if (time == 0) {
+		clearTimeout(Minitalk.socket.reconnectTimer);
+		if (time <= 0) {
 			Minitalk.socket.connect();
 		} else {
 			Minitalk.ui.notify("connecting","action",Minitalk.getText("action/reconnecting").replace("{SECOND}",time),false,false);
@@ -83,7 +107,7 @@ Minitalk.socket = {
 			/**
 			 * 동시에 서버재접속을 시도하지 않도록 1초 간격을 랜덤하게 조절한다.
 			 */
-			setTimeout(Minitalk.socket.reconnect,900 + Math.ceil(Math.random() * 300 % 300),--time);
+			Minitalk.socket.reconnectTimer = setTimeout(Minitalk.socket.reconnect,900 + Math.ceil(Math.random() * 300 % 300),--time);
 		}
 	},
 	/**
@@ -98,7 +122,9 @@ Minitalk.socket = {
 		/**
 		 * 소켓변수를 초기화한다.
 		 */
+		if (Minitalk.socket.io) Minitalk.socket.io.removeAllListeners();
 		Minitalk.socket.io = null;
+		Minitalk.socket.connecting = false;
 		Minitalk.socket.connected = false;
 		Minitalk.socket.joined = false;
 		
@@ -164,7 +190,7 @@ Minitalk.socket = {
 		/**
 		 * 접속 프로토콜을 제외한 나머지 프로토콜의 경우 접속상태에서만 전송한다.
 		 */
-		if (protocol != "join" && Minitalk.socket.isConnected() === false) {
+		if (!Minitalk.socket.io || (protocol != "join" && Minitalk.socket.isConnected() === false)) {
 			Minitalk.ui.printSystemMessage("error",Minitalk.getErrorText("SEND_ERROR"));
 			return;
 		}
@@ -178,6 +204,7 @@ Minitalk.socket = {
 		}
 		
 		Minitalk.socket.io.emit(protocol,data);
+		return true;
 	},
 	/**
 	 * 메시지를 전송한다.
@@ -187,7 +214,27 @@ Minitalk.socket = {
 	 * @param object data 메시지에 추가적으로 첨부할 데이터
 	 * @param boolean isPrint 메시지를 출력할지 여부
 	 */
+	queueFileMessage:function(file) {
+		if (Minitalk.socket.reconnectable !== true) return;
+		Minitalk.socket.pendingMessages.push({type:"file",message:file.name,data:file,channel:Minitalk.channel,box:Minitalk.box.connection});
+		Minitalk.socket.flushPendingMessages();
+		if (!Minitalk.socket.isConnected() && !Minitalk.socket.connecting) Minitalk.socket.connect();
+	},
+	flushPendingMessages:function() {
+		if (!Minitalk.socket.isJoined() || Minitalk.socket.reconnectable !== true) return;
+		while (Minitalk.socket.pendingMessages.length > 0) {
+			var next = Minitalk.socket.pendingMessages[0];
+			if (next.channel !== Minitalk.channel || next.box !== Minitalk.box.connection) {
+				Minitalk.socket.pendingMessages.shift();
+				Minitalk.ui.printSystemMessage("error",Minitalk.getErrorText("SEND_ERROR"));
+				continue;
+			}
+			if (Minitalk.socket.sendMessage(next.type,next.message,next.data) !== true) return;
+			Minitalk.socket.pendingMessages.shift();
+		}
+	},
 	sendMessage:function(type,message,data,isPrint) {
+		if (Minitalk.socket.isJoined() !== true) return false;
 		/**
 		 * 메시지를 보낼 수 있는 권한이 있는지 확인한다.
 		 */
@@ -218,7 +265,7 @@ Minitalk.socket = {
 		/**
 		 * 서버로 메시지를 전송한다.
 		 */
-		Minitalk.socket.send("message",{id:uuid,type:type,message:message,data:data,to:null});
+		if (Minitalk.socket.send("message",{id:uuid,type:type,message:message,data:data,to:null}) !== true) return false;
 		
 		if (isPrint == true) {
 			/**
@@ -228,6 +275,7 @@ Minitalk.socket = {
 		}
 		
 		Minitalk.ui.disable(true);
+		return true;
 	},
 	/**
 	 * 귓속말을 전송한다.

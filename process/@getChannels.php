@@ -13,8 +13,9 @@ if (defined('__MINITALK__') == false) exit;
 $category1 = Request('category1') ? Request('category1') : 0;
 $category2 = Request('category2') ? Request('category2') : 0;
 $keyword = Request('keyword') ? Request('keyword') : '';
-$start = Request('start');
+$start = max(0,(int)(Request('start') ?? 0));
 $limit = Request('limit');
+$limit = is_numeric($limit) && (int)$limit > 0 ? (int)$limit : 50;
 $sort = Request('sort') ? Request('sort') : 'channel';
 $dir = Request('dir') ? Request('dir') : 'asc';
 

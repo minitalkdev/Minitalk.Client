@@ -11,7 +11,7 @@
 if (defined('__MINITALK__') == false) exit;
 
 $room = $idx;
-if ($room == null) {
+if (is_string($room) == false || $room === '') {
 	$data->success = false;
 	$data->message = 'NOT_FOUND_ROOM';
 	return;

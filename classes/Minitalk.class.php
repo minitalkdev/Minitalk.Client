@@ -22,6 +22,7 @@ class Minitalk {
 	 * 미니톡 클라이언트 설정변수
 	 */
 	public $language;
+	private $mode = null;
 	
 	/**
 	 * 언어셋을 정의한다.
@@ -40,6 +41,8 @@ class Minitalk {
 	 */
 	private $categories = array();
 	private $channels = array();
+	private $servers = array();
+	private $ipColumnSizes = array();
 	
 	private $initTime = 0;
 	private $timezone; // server timezone
@@ -128,6 +131,7 @@ class Minitalk {
 	 */
 	function getApi($protocol,$api,$idx=null,$params=null) {
 		global $_CONFIGS;
+		if (!is_string($api) || !preg_match('/^[A-Za-z][A-Za-z0-9]*$/D',$api)) return (object)array('success'=>false,'message'=>'INVALID_API');
 		
 		$headers = getallheaders();
 		$token = null;
@@ -270,7 +274,7 @@ class Minitalk {
 						if ($value != null && is_string($value) == true) $description = $value;
 						$type = 'BACK';
 				}
-				$description = strlen($description) == 0 ? null : $description;
+				$description = $description === null || strlen($description) == 0 ? null : $description;
 			}
 		}
 		
@@ -466,9 +470,11 @@ class Minitalk {
 	 * @return object $channel
 	 */
 	function getChannel($channel) {
+		if (!is_string($channel) || $channel === '') return null;
 		if (isset($this->channels[$channel]) == true) return $this->channels[$channel];
 		$channel = $this->db()->select($this->table->channel)->where('channel',$channel)->getOne();
 		
+		if ($channel === null) return null;
 		$this->channels[$channel->channel] = $channel;
 		return $this->channels[$channel->channel];
 	}
@@ -557,11 +563,12 @@ class Minitalk {
 		
 		curl_setopt($ch,CURLOPT_TIMEOUT,5);
 		curl_setopt($ch,CURLOPT_RETURNTRANSFER,1);
-		curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
+		curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,true);
+		curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,2);
 		
 		$data = curl_exec($ch);
 		$http_code = curl_getinfo($ch,CURLINFO_HTTP_CODE);
-		curl_close($ch);
+		unset($ch);
 		
 		if ($data && json_decode($data) != null) {
 			return json_decode($data);
@@ -606,11 +613,12 @@ class Minitalk {
 		}
 		curl_setopt($ch,CURLOPT_TIMEOUT,10);
 		curl_setopt($ch,CURLOPT_RETURNTRANSFER,1);
-		curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
+		curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,true);
+		curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,2);
 		
 		$data = curl_exec($ch);
 		$http_code = curl_getinfo($ch,CURLINFO_HTTP_CODE);
-		curl_close($ch);
+		unset($ch);
 		
 		if ($http_code == 200) {
 			$results = json_decode($data);
@@ -635,6 +643,7 @@ class Minitalk {
 	 * @return object $connection
 	 */
 	function getServerConnection($channel) {
+		global $_CONFIGS;
 		$results = new stdClass();
 		$channel = $this->getChannel($channel);
 		
@@ -679,7 +688,17 @@ class Minitalk {
 			$results->error = 'SERVICE_TEMPORARILY_UNAVAILABLE';
 		} else {
 			$results->success = true;
-			$results->connection = $server->connection;
+			$results->connection = clone $server->connection;
+			if (isset($_CONFIGS->socket_origins) && is_object($_CONFIGS->socket_origins)) {
+				$publicOrigin = $_CONFIGS->socket_origins->{$server->domain} ?? null;
+				if ($publicOrigin !== null) {
+					$url = is_string($publicOrigin) ? parse_url($publicOrigin) : false;
+					if ($url === false || !in_array($url['scheme'] ?? '',array('http','https'),true) || empty($url['host']) || isset($url['user']) || isset($url['pass']) || isset($url['query']) || isset($url['fragment']) || !in_array($url['path'] ?? '',array('','/'),true)) {
+						throw new UnexpectedValueException('Invalid configured socket origin');
+					}
+					$results->connection->domain = rtrim($publicOrigin,'/');
+				}
+			}
 			$results->connection->channel = Encoder(json_encode(array('name'=>$channel->channel,'title'=>$channel->title,'send_limit'=>$channel->send_limit,'password'=>$channel->password,'max_user'=>$channel->max_user,'guest_name'=>$channel->guest_name,'allow_nickname_edit'=>$channel->allow_nickname_edit == 'TRUE','user_limit'=>$channel->user_limit,'box_limit'=>$channel->box_limit,'file_limit'=>$channel->file_limit,'font_limit'=>$channel->font_limit)));
 		}
 		
@@ -702,7 +721,7 @@ class Minitalk {
 		if (is_file($path) == true) {
 			$finfo = finfo_open(FILEINFO_MIME_TYPE);
 			$mime = finfo_file($finfo,$path);
-			finfo_close($finfo);
+			unset($finfo);
 
 			return $mime;
 		} else {
@@ -816,7 +835,7 @@ class Minitalk {
 	 */
 	function isBanIp($ip=null) {
 		$ip = $ip == null ? $_SERVER['REMOTE_ADDR'] : $ip;
-		return $this->db()->select($this->table->ipban)->where('ip',$ip)->has();
+		return $this->db()->select($this->table->banip)->where('ip',$ip)->has();
 	}
 	
 	/**
@@ -989,7 +1008,7 @@ class Minitalk {
 	 */
 	function saveCacheContent($name,$content) {
 		if (is_dir($this->getAttachmentPath().'/cache') == false) {
-			mkdir($this->getAttachmentPath().'/cache');
+			mkdir($this->getAttachmentPath().'/cache',0707,true);
 			chmod($this->getAttachmentPath().'/cache',0707);
 		}
 		
@@ -1026,11 +1045,12 @@ class Minitalk {
 				curl_setopt($ch,CURLOPT_POST,false);
 				curl_setopt($ch,CURLOPT_TIMEOUT,10);
 				curl_setopt($ch,CURLOPT_RETURNTRANSFER,1);
-				curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
+				curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,true);
+		curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,2);
 				
 				$data = curl_exec($ch);
 				$http_code = curl_getinfo($ch,CURLINFO_HTTP_CODE);
-				curl_close($ch);
+				unset($ch);
 				
 				if ($http_code == 200) {
 					$results = json_decode($data);
@@ -1048,24 +1068,50 @@ class Minitalk {
 	}
 	
 	/**
-	 * 데이터베이스 구조가 변경된 경우 최신 데이터베이스 구조로 자동 업데이트한다.
+	 * 데이터베이스 변경 필요 여부를 읽기 전용으로 확인한다. 실행은 관리자 승인 요청에서만 한다.
 	 *
 	 * @return boolean/string $result
 	 */
 	function checkInstall() {
 		global $_CONFIGS;
 		
-		if ($_CONFIGS->installed === true && is_file(__MINITALK_PATH__.'/package.json') == true) {
-			$cacheFile = 'core.package';
-			if ($this->getCacheContent($cacheFile) != md5_file(__MINITALK_PATH__.'/package.json')) {
-				$package = json_decode(file_get_contents(__MINITALK_PATH__.'/package.json'));
-				if (CreateDatabase($this->db(),$package->databases) !== true) return $this->getText('error/DATABASE_AUTO_UPDATE_FAIL');
-				
-				$this->saveCacheContent($cacheFile,md5_file(__MINITALK_PATH__.'/package.json'));
-			}
-		}
+		if ($_CONFIGS->installed === true && $this->getDatabaseUpdateStatus()['pending']) return '데이터베이스 업데이트가 필요합니다.';
 		
 		return true;
+	}
+
+	/** Read-only schema inspection. Opening a page never changes customer tables. */
+	function getDatabaseUpdateStatus() {
+		try { return (new DatabaseUpdater($this->db()))->status(); }
+		catch (Throwable $error) {
+			error_log('Minitalk schema inspection failed: '.get_class($error).' code '.$error->getCode());
+			return array('pending'=>true,'blocked'=>array('DATABASE_STATE_UNVERIFIED'),'schema_hash'=>null);
+		}
+	}
+
+	/** Before approval, reject long-IP writes instead of truncating customer records. */
+	function canStoreClientIp($table,$ip) {
+		if (!is_string($ip) || !filter_var($ip,FILTER_VALIDATE_IP) || !in_array($table,array('history','attachment','banip'),true)) return false;
+		if (strlen($ip) <= 15) return true;
+		if (!isset($this->ipColumnSizes[$table])) {
+			try {
+				$db = $this->db();
+				$stmt = $db->mysqli()->prepare('SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=\'ip\'');
+				if ($stmt === false) return false;
+				try {
+					$name = $db->getTable($this->getTable($table));
+					if (!$stmt->bind_param('s',$name) || !$stmt->execute() || !$stmt->bind_result($capacity)) return false;
+					$this->ipColumnSizes[$table] = $stmt->fetch() === true ? (int)$capacity : 0;
+				} finally { $stmt->close(); }
+			} catch (Throwable $error) { return false; }
+		}
+		return $this->ipColumnSizes[$table] >= strlen($ip);
+	}
+
+	/** Only the authenticated POST handler may initiate an existing-install update. */
+	function updateDatabase($schemaHash) {
+		if (!$this->isAdmin()) return array('success'=>false,'code'=>'FORBIDDEN');
+		return (new DatabaseUpdater($this->db()))->apply($schemaHash);
 	}
 	
 	/**
@@ -1079,10 +1125,12 @@ class Minitalk {
 	 */
 	function doProcess($action) {
 		$results = new stdClass();
-		
+
 		/**
 		 * 미니톡 클라이언트 process 폴더에 $action 에 해당하는 파일이 있을 경우 불러온다.
+		 * basename() 으로 경로 구분자(../ 등)를 제거하여 path traversal 을 방지한다.
 		 */
+		$action = basename($action);
 		if (is_file($this->getPath().'/process/'.$action.'.php') == true) {
 			INCLUDE $this->getPath().'/process/'.$action.'.php';
 		}

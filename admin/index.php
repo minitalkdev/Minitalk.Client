@@ -17,10 +17,15 @@ if ($_CONFIGS->installed === false) {
 
 $MINITALK = new Minitalk();
 $logged = $MINITALK->getAdminLogged();
+$checkUpdate = true;
+$databaseUpdate = null;
+if ($logged !== null) {
+	$databaseUpdate = $MINITALK->getDatabaseUpdateStatus();
+	if (!isset($_SESSION['MINITALK_DATABASE_CSRF'])) $_SESSION['MINITALK_DATABASE_CSRF'] = bin2hex(random_bytes(32));
+}
 
 if ($logged !== null && $logged->language == 'ko') {
 	$checkUpdate = $MINITALK->checkUpdate();
-	$checkInstall = $MINITALK->checkInstall();
 	
 	$fontStyle = '../styles/font.css.php?font=moimz,XEIcon,FontAwesome,NanumBarunGothic,OpenSans&default=NanumBarunGothic';
 } else {
@@ -50,6 +55,7 @@ $hasServer = is_dir(__MINITALK_PATH__.'/server') == true;
 <?php } ?>
 <link rel="stylesheet" href="<?php echo $fontStyle; ?>" type="text/css">
 <script src="./scripts/script.js?t=<?php echo filemtime('./scripts/script.js'); ?>"></script>
+<?php if ($logged !== null) { ?><script src="./scripts/database-update.js?t=<?php echo filemtime('./scripts/database-update.js'); ?>" defer></script><?php } ?>
 <script src="../scripts/language.js.php?language=<?php echo $logged == null ? 'en' : $logged->language; ?>"></script>
 <link rel="shortcut icon" type="image/x-icon" href="//www.minitalk.io/modules/moimz/images/Minitalk.ico">
 </head>
@@ -61,11 +67,21 @@ if ($logged === null) {
 	$menuIcons = array('server'=>'xi-cloud-network','channel'=>'xi-chat','log'=>'xi-time-back','resource'=>'xi-archive','banip'=>'xi-slash-circle','broadcast'=>'xi-signal','admin'=>'xi-crown');
 ?>
 <header id="MinitalkHeader">
+ <?php if (PHP_VERSION_ID >= 80600) { ?>
+ <span role="status">현재 PHP 버전은 검증된 지원 범위(8.2~8.5)를 벗어납니다. 업데이트 전 호환성을 확인해 주세요.</span>
+ <?php } ?>
 	<?php if ($checkUpdate !== true) { ?>
 	<a href="https://www.minitalk.io/ko/download/current" target="_blank" data-role="update"><?php echo $checkUpdate; ?></a>
 	<?php } ?>
-	<?php if ($checkInstall !== true) { ?>
-	<a href="<?php echo __MINITALK_DIR__; ?>/install" target="_blank" data-role="install"><?php echo $checkInstall; ?></a>
+	<?php if ($databaseUpdate !== null && $databaseUpdate['pending']) { ?>
+	<?php if ($databaseUpdate['blocked']) { ?>
+	<a data-role="install" role="status">자동으로 변경할 수 없는 DB 구조입니다. 기존 데이터는 유지됩니다. 관리자에게 문의해 주세요.</a>
+	<?php } else { ?>
+	<a href="#database-update" role="button" id="MinitalkDatabaseUpdate" data-role="install"
+		data-url="<?php echo htmlspecialchars($MINITALK->getClientProcessUrl('@updateDatabase'),ENT_QUOTES,'UTF-8'); ?>"
+		data-token="<?php echo htmlspecialchars($_SESSION['MINITALK_DATABASE_CSRF'],ENT_QUOTES,'UTF-8'); ?>"
+		data-schema="<?php echo htmlspecialchars($databaseUpdate['schema_hash'],ENT_QUOTES,'UTF-8'); ?>">새 클라이언트에 필요한 DB 업데이트가 있습니다. 설정과 대화 기록을 유지하고 필요한 필드만 변경합니다. [업데이트]</a>
+	<?php } ?>
 	<?php } ?>
 	<h1>Minitalk <small>Administrator</small></h1>
 	
@@ -85,7 +101,7 @@ if ($logged === null) {
 </header>
 
 <footer id="MinitalkFooter">
-	Copyright(c) <?php echo date('Y'); ?> Minitalk v<?php echo __MINITALK_VERSION__; ?> / MIT License / <?php echo $_SERVER['SERVER_ADDR']; ?>
+	Copyright(c) <?php echo date('Y'); ?> Minitalk v<?php echo __MINITALK_VERSION__; ?> / MIT License / <?php echo htmlspecialchars($_SERVER['SERVER_ADDR'] ?? '',ENT_QUOTES,'UTF-8'); ?>
 </footer>
 
 <script>

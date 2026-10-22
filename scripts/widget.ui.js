@@ -142,6 +142,7 @@ Minitalk.ui = {
 	 * UI DOM 객체의 이벤트를 정의한다.
 	 */
 	initEvents:function() {
+		var $frame = $("div[data-role=frame]");
 		/**
 		 * 채팅입력폼 이벤트 추가
 		 */
@@ -175,6 +176,7 @@ Minitalk.ui = {
 				$(this).data("drafts",null);
 				$(this).data("current",null);
 				$(this).data("files",e.target.files);
+				Minitalk.ui.uploadReconnectStarted = null;
 				
 				Minitalk.ui.uploadFiles();
 			}
@@ -241,6 +243,23 @@ Minitalk.ui = {
 		 */
 		$(window).on("beforeunload",function() {
 			Minitalk.ui.closeWindow(true);
+		});
+
+		/**
+		 * 페이지가 다시 visible 상태가 되면 (파일피커 종료, 탭 복귀 등)
+		 * 끊겨있는 경우 조용히 재접속한다.
+		 */
+		$(window).on("focus",function() {
+			if (document.hidden !== true && Minitalk.socket.connected === false && Minitalk.socket.reconnectable === true) {
+				Minitalk.ui.unnotify("disconnect");
+				Minitalk.socket.connect();
+			}
+		});
+		document.addEventListener("visibilitychange",function() {
+			if (document.hidden === false && Minitalk.socket.connected === false && Minitalk.socket.reconnectable === true) {
+				Minitalk.ui.unnotify("disconnect");
+				Minitalk.socket.connect();
+			}
 		});
 		
 		/**
@@ -2148,10 +2167,10 @@ Minitalk.ui = {
 			case "file" :
 				var $data = $("<div>").attr("data-role","file");
 				
-				var $link = $("<a>").attr("href",encodeURI(message.data.download)).attr("target","_blank");
+				var $link = $("<a>").attr("href",message.data.download).attr("target","_blank");
 				if (message.data.type == "image") {
 					var $image = $("<div>").attr("data-role","image");
-					var $background = $("<div>").css("backgroundImage","url(" + encodeURI(message.data.view) + ")");
+					var $background = $("<div>").css("backgroundImage","url('" + message.data.view + "')");
 					
 					/**
 					 * 가로 세로 크기 데이터가 있을 경우, 세로 % 를 계산하고, 그렇지 않은 경우 16:10 비율로 표시한다.
@@ -2414,12 +2433,26 @@ Minitalk.ui = {
 		/**
 		 * 서버접속중이 아니라면 파일전송을 중단한다.
 		 */
-		if (Minitalk.socket.isConnected() === false) {
-			$file.data("files",null);
-			$file.data("drafts",null);
-			$file.data("current",null);
-			$file.val("");
+		if (Minitalk.ui.uploadReconnectTimer != null) {
+			clearTimeout(Minitalk.ui.uploadReconnectTimer);
+			Minitalk.ui.uploadReconnectTimer = null;
 		}
+		if (Minitalk.socket.isJoined() === false) {
+			var selected = $file.data("files");
+			if (!selected || selected.length === 0) return;
+			// Keep the FileList and chunk offset until the channel is ready again.
+			if (Minitalk.socket.reconnectable !== true) return;
+			if (Minitalk.ui.uploadReconnectStarted == null) Minitalk.ui.uploadReconnectStarted = Date.now();
+			if (Date.now() - Minitalk.ui.uploadReconnectStarted >= 60000) {
+				Minitalk.ui.uploadReconnectStarted = null;
+				Minitalk.ui.printSystemMessage("error",Minitalk.getErrorText("CONNECT_ERROR"));
+				return;
+			}
+			if (Minitalk.socket.connected !== true && Minitalk.socket.connecting !== true) Minitalk.socket.connect();
+			Minitalk.ui.uploadReconnectTimer = setTimeout(Minitalk.ui.uploadFiles,250);
+			return;
+		}
+		Minitalk.ui.uploadReconnectStarted = null;
 		
 		Minitalk.ui.disable(true);
 		
@@ -2502,8 +2535,9 @@ Minitalk.ui = {
 					if (file.chunk == file.size) {
 						/**
 						 * 파일정보를 읽은 후 채팅서버에 전송한다.
+						 * 소켓이 끊겨있는 경우 재접속 후 전송하도록 대기열에 보관한다.
 						 */
-						Minitalk.socket.sendMessage("file",result.file.name,result.file);
+						Minitalk.socket.queueFileMessage(result.file);
 						
 						/**
 						 * 다음에 업로드해야하는 파일이 존재할 경우

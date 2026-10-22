@@ -51,7 +51,8 @@ class DB {
 			$this->connectors[$code] = $db;
 		}
 		
-		$dbClass = new $this->connectors[$code]->type($this->connectors[$code],$this);
+		$driver = $this->connectors[$code]->type;
+		$dbClass = new $driver($this->connectors[$code],$this);
 		if (isset($this->connections[$code]) == false) {
 			$this->connections[$code] = $dbClass->connect();
 		} else {

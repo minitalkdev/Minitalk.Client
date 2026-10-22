@@ -14,6 +14,9 @@ $errors = array();
 $user_id = Request('user_id') ? Request('user_id') : $errors['user_id'] = $this->getErrorText('REQUIRED');
 $password = Request('password') ? Request('password') : $errors['password'] = $this->getErrorText('REQUIRED');
 
+if (!is_string($user_id)) $errors['user_id'] = $this->getErrorText('REQUIRED');
+if (!is_string($password)) $errors['password'] = $this->getErrorText('REQUIRED');
+
 if (count($errors) == 0) {
 	$mHash = new Hash();
 	$check = $this->db()->select($this->table->admin)->where('user_id',$user_id)->getOne();
@@ -23,7 +26,13 @@ if (count($errors) == 0) {
 		$this->db()->update($this->table->admin,array('latest_login'=>time()))->where('idx',$check->idx)->execute();
 		$_SESSION['MINITALK_LOGGED'] = $loginString;
 		if (Request('auto_login') == 'TRUE') {
-			setcookie('MINITALK_LOGGED',$loginString,time() + 86400 * 60,'/');
+			setcookie('MINITALK_LOGGED',$loginString,array(
+				'expires'  => time() + 86400 * 60,
+				'path'     => '/',
+				'httponly' => true,
+				'secure'   => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+				'samesite' => 'Lax'
+			));
 		}
 	} else {
 		$results->success= false;

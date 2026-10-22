@@ -11,7 +11,12 @@
 if (defined('__MINITALK__') == false) exit;
 
 $ip = Param('ip');
-$data = $this->db()->select($this->table->banip)->where('ip',$ip)->getOne();
+$data = is_string($ip) ? $this->db()->select($this->table->banip)->where('ip',$ip)->getOne() : null;
+if ($data === null) {
+	$results->success = false;
+	$results->message = $this->getErrorText('NOT_FOUND');
+	return;
+}
 
 $data->oIp = $data->ip;
 

@@ -10,12 +10,21 @@
  */
 if (defined('__MINITALK__') == false) exit;
 
-$history = Request('history') ? json_decode(Request('history')) : null;
+$rawHistory = Request('history');
+$history = is_string($rawHistory) ? json_decode($rawHistory) : null;
 
-if ($secret_key == null || $secret_key != $_CONFIGS->key || $history == null || count($history) == 0) {
+if ($secret_key == null || $secret_key != $_CONFIGS->key || !is_array($history) || count($history) == 0) {
 	$data->success = false;
 	$data->message = 'MISSING PARAMTERS : SECRET_KEY OR HISTORY';
 	return;
+}
+
+foreach ($history as $message) {
+	if (isset($message->ip) && !$this->canStoreClientIp('history',$message->ip)) {
+		$data->success = false;
+		$data->code = 'DATABASE_UPDATE_REQUIRED';
+		return;
+	}
 }
 
 foreach ($history as $message) {
@@ -24,7 +33,9 @@ foreach ($history as $message) {
 	} elseif ($message->edited == true && isset($message->room) == false) {
 		$this->db()->update($this->table->history,array('message'=>$message->message,'data'=>json_encode($message->data),'edited'=>'TRUE'))->where('id',$message->id)->execute();
 	} else {
-		$insert = (array)$message;
+		// Persist only SQL schema fields; MongoDB tracking fields are internal.
+		$columns = json_decode(file_get_contents(__MINITALK_PATH__.'/package.json'))->databases->history_table->columns;
+		$insert = array_intersect_key((array)$message, (array)$columns);
 		unset($insert['client_id']);
 		unset($insert['deleted']);
 		

@@ -10,9 +10,10 @@
  */
 if (defined('__MINITALK__') == false) exit;
 
-$names = Request('names') ? json_decode(Request('names')) : null;
+$names = is_string(Request('names')) ? json_decode(Request('names')) : null;
+if (is_array($names) == false) $names = array();
 for ($i=0, $loop=count($names);$i<$loop;$i++) {
-	if (preg_match('/\.cache$/',$names[$i]) == false) continue;
+	if (is_string($names[$i]) == false || preg_match('/\.cache$/',$names[$i]) == false) continue;
 	
 	@unlink($this->getAttachmentPath().'/cache/'.$names[$i]);
 }

@@ -16,8 +16,8 @@ header('Expires: '.gmdate('D, d M Y H:i:s',time() + 3600).' GMT');
 header('Cache-Control: max-age=3600');
 header('Pragma: public');
 
-$language = Request('language');
-$languages = Request('languages') ? explode(',',Request('languages')) : array();
+$language = is_string(Request('language')) ? Request('language') : null;
+$languages = is_string(Request('languages')) && Request('languages') !== '' ? explode(',',Request('languages')) : array();
 
 /**
  * 미니톡 클라이언트의 언어파일을 불러온다.
@@ -35,7 +35,7 @@ if (is_file(__MINITALK_PATH__.'/languages/'.$language.'.json') == true) {
 if ($lang != null) echo 'Minitalk.addLanguage("core","",'.$lang.','.($oLang == null ? 'null' : $oLang).');'.PHP_EOL;
 
 for ($i=0, $loop=count($languages);$i<$loop;$i++) {
-	list($type,$target,$defaultLanguage) = explode('@',$languages[$i]);
+	list($type,$target,$defaultLanguage) = array_pad(explode('@',$languages[$i]),3,null);
 	
 	$lang = null;
 	$oLang = null;
